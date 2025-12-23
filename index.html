@@ -1,76 +1,127 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>URL管理&整理くん</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-    }
-    .item {
-      border: 1px solid #ccc;
-      padding: 10px;
-      margin-top: 10px;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>URL管理＆整理くん</title>
+<style>
+body {
+  font-family: sans-serif;
+  background: #ffffff;
+  margin: 20px;
+}
+
+h1 {
+  margin-bottom: 10px;
+}
+
+input, textarea, button {
+  margin: 4px 0;
+  padding: 6px;
+  width: 100%;
+}
+
+button {
+  cursor: pointer;
+}
+
+.entry {
+  border: 1px solid #ccc;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.small {
+  font-size: 12px;
+  color: #555;
+}
+</style>
 </head>
+
 <body>
 
-<h1>URL管理&整理くん</h1>
+<h1>URL管理＆整理くん</h1>
 
-<h2>追加</h2>
-<input id="genre" placeholder="ジャンル">
-<br><br>
+<h3>追加</h3>
 <input id="url" placeholder="URL">
-<br><br>
-<input id="memo" placeholder="メモ">
-<br><br>
-<button onclick="addItem()">追加</button>
+<input id="genre" placeholder="ジャンル（自由入力）">
+<textarea id="memo" placeholder="備考"></textarea>
+<button onclick="addEntry()">追加</button>
 
 <hr>
 
-<h2>保存されたURL</h2>
+<h3>検索</h3>
+<input id="searchGenre" placeholder="ジャンルで検索">
+<input id="searchDate" type="date">
+<button onclick="search()">検索</button>
+<button onclick="clearSearch()">検索クリア</button>
+
+<hr>
+
 <div id="list"></div>
 
 <script>
-  const list = document.getElementById("list");
+let data = [];
 
-  function loadItems() {
-    list.innerHTML = "";
-    const items = JSON.parse(localStorage.getItem("items") || "[]");
-    items.forEach(item => {
-      const div = document.createElement("div");
-      div.className = "item";
-      div.innerHTML = `
-        <strong>ジャンル：</strong>${item.genre}<br>
-        <strong>URL：</strong>
-        <a href="${item.url}" target="_blank">${item.url}</a><br>
-        <strong>メモ：</strong>${item.memo}
-      `;
-      list.appendChild(div);
-    });
-  }
+function addEntry() {
+  const url = document.getElementById("url").value;
+  const genre = document.getElementById("genre").value;
+  const memo = document.getElementById("memo").value;
+  if (!url) return;
 
-  function addItem() {
-    const genre = document.getElementById("genre").value;
-    const url = document.getElementById("url").value;
-    const memo = document.getElementById("memo").value;
+  const now = new Date();
+  data.push({
+    url,
+    genre,
+    memo,
+    date: now.toISOString().slice(0,10),
+    time: now.toLocaleTimeString()
+  });
 
-    if (!genre || !url) return alert("ジャンルとURLは必須");
+  document.getElementById("url").value = "";
+  document.getElementById("genre").value = "";
+  document.getElementById("memo").value = "";
 
-    const items = JSON.parse(localStorage.getItem("items") || "[]");
-    items.push({ genre, url, memo });
-    localStorage.setItem("items", JSON.stringify(items));
+  render(data);
+}
 
-    document.getElementById("genre").value = "";
-    document.getElementById("url").value = "";
-    document.getElementById("memo").value = "";
+function render(list) {
+  const div = document.getElementById("list");
+  div.innerHTML = "";
+  list.forEach((e, i) => {
+    div.innerHTML += `
+      <div class="entry">
+        <div><a href="${e.url}" target="_blank">${e.url}</a></div>
+        <div>ジャンル：${e.genre}</div>
+        <div>メモ：${e.memo}</div>
+        <div class="small">${e.date} ${e.time}</div>
+        <button onclick="removeEntry(${i})">削除</button>
+      </div>
+    `;
+  });
+}
 
-    loadItems();
-  }
+function removeEntry(i) {
+  data.splice(i, 1);
+  render(data);
+}
 
-  loadItems();
+function search() {
+  const g = document.getElementById("searchGenre").value;
+  const d = document.getElementById("searchDate").value;
+
+  const filtered = data.filter(e =>
+    (!g || e.genre.includes(g)) &&
+    (!d || e.date === d)
+  );
+
+  render(filtered);
+}
+
+function clearSearch() {
+  document.getElementById("searchGenre").value = "";
+  document.getElementById("searchDate").value = "";
+  render(data);
+}
 </script>
 
 </body>
