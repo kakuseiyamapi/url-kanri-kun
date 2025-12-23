@@ -125,6 +125,29 @@ function clearSearch() {
 </script>
 <button onclick="login()">Googleでログイン</button>
 <p id="user"></p>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  // ここにFirebaseの設定を貼る
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+
+function login() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider);
+}
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    document.getElementById("user").innerText =
+      "ログイン中：" + user.displayName;
+  }
+});
+</script>
 
 </body>
 </html>
