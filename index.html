@@ -7,29 +7,27 @@
 <style>
 body {
   font-family: sans-serif;
-  background: #fff;
+  background: #ffffff;
   margin: 20px;
 }
+
 input, textarea, button {
   width: 100%;
   margin: 5px 0;
   padding: 6px;
 }
+
 .entry {
   border: 1px solid #ccc;
-  padding: 8px;
-  margin-top: 8px;
+  padding: 10px;
+  margin-top: 10px;
 }
+
 .small {
   font-size: 12px;
   color: #555;
 }
 </style>
-
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 </head>
 
 <body>
@@ -54,44 +52,49 @@ input, textarea, button {
 <input id="searchGenre" placeholder="ジャンルで検索">
 <input id="searchDate" type="date">
 <button onclick="search()">検索</button>
-<button onclick="clearSearch()">検索クリア</button>
+<button onclick="loadAll()">検索クリア</button>
 
 <hr>
 
 <div id="list"></div>
 
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
 <script>
-/* Firebase設定 */
-firebase.initializeApp({
+const firebaseConfig = {
   apiKey: "AIzaSyCRbxQK7LFzoEAeTYhFVrPEGCJx9QU7hAQ",
   authDomain: "url-kanri-kun.firebaseapp.com",
-  projectId: "url-kanri-kun"
-});
+  projectId: "url-kanri-kun",
+  storageBucket: "url-kanri-kun.appspot.com",
+  messagingSenderId: "142130647668",
+  appId: "1:142130647668:web:a24da9ae06dfa84ad37721"
+};
+
+firebase.initializeApp(firebaseConfig);
 
 const auth = firebase.auth();
 const db = firebase.firestore();
-
 let currentUser = null;
-let cache = []; // 🔥 検索用キャッシュ
 
-/* ログイン */
+/* ---------- 認証 ---------- */
 function login() {
   const provider = new firebase.auth.GoogleAuthProvider();
   auth.signInWithPopup(provider);
 }
 
-/* ログアウト */
 function logout() {
   auth.signOut();
 }
 
-/* 認証監視 */
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
     document.getElementById("user").innerText =
       "ログイン中：" + user.displayName;
-    loadData();
+    loadAll();
   } else {
     currentUser = null;
     document.getElementById("user").innerText = "未ログイン";
@@ -99,11 +102,13 @@ auth.onAuthStateChanged(user => {
   }
 });
 
-/* 追加 */
+/* ---------- 追加 ---------- */
 function addEntry() {
-  if (!currentUser) return alert("ログインして");
+  if (!currentUser) return alert("ログインしてください");
 
-  const url = urlInput.value;
+  const url = document.getElementById("url").value;
+  const genre = document.getElementById("genre").value;
+  const memo = document.getElementById("memo").value;
   if (!url) return;
 
   const now = new Date();
@@ -113,76 +118,87 @@ function addEntry() {
     .collection("urls")
     .add({
       url,
-      genre: genre.value,
-      memo: memo.value,
-      date: now.toISOString().slice(0,10),
-      time: now.toLocaleTimeString(),
-      created: now
-    });
-
-  urlInput.value = genre.value = memo.value = "";
-}
-
-/* 読み込み */
-function loadData() {
-  db.collection("users")
-    .doc(currentUser.uid)
-    .collection("urls")
-    .orderBy("created", "desc")
-    .onSnapshot(snapshot => {
-      cache = [];
-      snapshot.forEach(doc => {
-        cache.push({ id: doc.id, ...doc.data() });
-      });
-      render(cache);
+      genre,
+      memo,
+      createdAt: firebase.firestore.Timestamp.fromDate(now)
+    })
+    .then(() => {
+      document.getElementById("url").value = "";
+      document.getElementById("genre").value = "";
+      document.getElementById("memo").value = "";
+      loadAll();
     });
 }
 
-/* 描画 */
-function render(list) {
-  const div = document.getElementById("list");
-  div.innerHTML = "";
-  list.forEach(e => {
-    div.innerHTML += `
+/* ---------- 表示 ---------- */
+function render(docs) {
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+
+  docs.forEach(doc => {
+    const d = doc.data();
+    const date = d.createdAt.toDate();
+
+    list.innerHTML += `
       <div class="entry">
-        <a href="${e.url}" target="_blank">${e.url}</a>
-        <div>ジャンル：${e.genre}</div>
-        <div>メモ：${e.memo}</div>
-        <div class="small">${e.date} ${e.time}</div>
-        <button onclick="removeEntry('${e.id}')">削除</button>
+        <a href="${d.url}" target="_blank">${d.url}</a>
+        <div>ジャンル：${d.genre}</div>
+        <div>メモ：${d.memo}</div>
+        <div class="small">
+          ${date.toLocaleDateString()} ${date.toLocaleTimeString()}
+        </div>
+        <button onclick="removeEntry('${doc.id}')">削除</button>
       </div>
     `;
   });
 }
 
-/* 削除 */
+/* ---------- 全件 ---------- */
+function loadAll() {
+  if (!currentUser) return;
+
+  db.collection("users")
+    .doc(currentUser.uid)
+    .collection("urls")
+    .orderBy("createdAt", "desc")
+    .get()
+    .then(snap => render(snap.docs));
+}
+
+/* ---------- 検索 ---------- */
+function search() {
+  if (!currentUser) return;
+
+  const g = document.getElementById("searchGenre").value;
+  const d = document.getElementById("searchDate").value;
+
+  let ref = db.collection("users")
+    .doc(currentUser.uid)
+    .collection("urls");
+
+  ref.get().then(snap => {
+    const filtered = snap.docs.filter(doc => {
+      const data = doc.data();
+      const date = data.createdAt.toDate().toISOString().slice(0,10);
+
+      return (!g || data.genre.includes(g)) &&
+             (!d || date === d);
+    });
+    render(filtered);
+  });
+}
+
+/* ---------- 削除 ---------- */
 function removeEntry(id) {
   db.collection("users")
     .doc(currentUser.uid)
     .collection("urls")
     .doc(id)
-    .delete();
-}
-
-/* 検索 */
-function search() {
-  const g = searchGenre.value;
-  const d = searchDate.value;
-
-  const filtered = cache.filter(e =>
-    (!g || e.genre.includes(g)) &&
-    (!d || e.date === d)
-  );
-  render(filtered);
-}
-
-/* 検索クリア */
-function clearSearch() {
-  searchGenre.value = "";
-  searchDate.value = "";
-  render(cache);
+    .delete()
+    .then(loadAll);
 }
 </script>
 
 </body>
 </html>
+
