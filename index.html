@@ -4,17 +4,34 @@
 <meta charset="UTF-8">
 <title>URL管理＆整理くん</title>
 
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
 <style>
 body {
+  margin: 0;
+  background: #bfe9ff; /* 枠外 水色 */
   font-family: sans-serif;
-  background: #ffffff;
-  margin: 20px;
+}
+
+.container {
+  max-width: 800px;
+  margin: 20px auto;
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
 }
 
 input, textarea, button {
   width: 100%;
-  margin: 5px 0;
-  padding: 6px;
+  padding: 8px;
+  margin: 4px 0;
+}
+
+button {
+  cursor: pointer;
 }
 
 .entry {
@@ -32,173 +49,171 @@ input, textarea, button {
 
 <body>
 
-<h1>URL管理＆整理くん</h1>
+<div class="container">
+  <h1>URL管理＆整理くん</h1>
+  <p id="user">未ログイン</p>
+  <p id="counter">閲覧者数: --</p>
 
-<button onclick="login()">Googleでログイン</button>
-<button onclick="logout()">ログアウト</button>
-<p id="user"></p>
+  <button onclick="login()">Googleでログイン</button>
+  <button onclick="logout()">ログアウト</button>
 
-<hr>
+  <hr>
 
-<h3>追加</h3>
-<input id="url" placeholder="URL">
-<input id="genre" placeholder="ジャンル">
-<textarea id="memo" placeholder="メモ"></textarea>
-<button onclick="addEntry()">追加</button>
+  <h3>追加</h3>
+  <input id="url" placeholder="URL">
+  <input id="genre" placeholder="ジャンル">
+  <textarea id="memo" placeholder="メモ"></textarea>
+  <button onclick="addEntry()">追加</button>
 
-<hr>
+  <hr>
 
-<h3>検索</h3>
-<input id="searchGenre" placeholder="ジャンルで検索">
-<input id="searchDate" type="date">
-<button onclick="search()">検索</button>
-<button onclick="loadAll()">検索クリア</button>
+  <h3>検索</h3>
+  <input id="searchGenre" placeholder="ジャンル検索">
+  <input id="searchDate" type="date">
+  <button onclick="search()">検索</button>
+  <button onclick="loadData()">クリア</button>
 
-<hr>
+  <hr>
 
-<div id="list"></div>
-
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <div id="list"></div>
+</div>
 
 <script>
+/* Firebase設定 */
 const firebaseConfig = {
   apiKey: "AIzaSyCRbxQK7LFzoEAeTYhFVrPEGCJx9QU7hAQ",
   authDomain: "url-kanri-kun.firebaseapp.com",
-  projectId: "url-kanri-kun",
-  storageBucket: "url-kanri-kun.appspot.com",
-  messagingSenderId: "142130647668",
-  appId: "1:142130647668:web:a24da9ae06dfa84ad37721"
+  projectId: "url-kanri-kun"
 };
 
 firebase.initializeApp(firebaseConfig);
-
 const auth = firebase.auth();
 const db = firebase.firestore();
-let currentUser = null;
 
-/* ---------- 認証 ---------- */
+let uid = null;
+let allData = [];
+
+/* ログイン */
 function login() {
   const provider = new firebase.auth.GoogleAuthProvider();
   auth.signInWithPopup(provider);
 }
 
+/* ログアウト */
 function logout() {
   auth.signOut();
 }
 
-auth.onAuthStateChanged(user => {
-  if (user) {
-    currentUser = user;
-    document.getElementById("user").innerText =
-      "ログイン中：" + user.displayName;
-    loadAll();
-  } else {
-    currentUser = null;
+/* 認証状態 */
+auth.onAuthStateChanged(async user => {
+  if (!user) {
+    uid = null;
     document.getElementById("user").innerText = "未ログイン";
     document.getElementById("list").innerHTML = "";
+    return;
   }
+
+  uid = user.uid;
+  document.getElementById("user").innerText =
+    `ログイン中：${user.displayName}`;
+
+  await countVisitor();
+  loadData();
 });
 
-/* ---------- 追加 ---------- */
-function addEntry() {
-  if (!currentUser) return alert("ログインしてください");
+/* 閲覧者カウンター */
+async function countVisitor() {
+  const ref = db.collection("meta").doc("counter");
+  await db.runTransaction(async tx => {
+    const doc = await tx.get(ref);
+    const count = doc.exists ? doc.data().count + 1 : 1;
+    tx.set(ref, { count });
+    document.getElementById("counter").innerText =
+      `閲覧者数: ${count}`;
+  });
+}
 
-  const url = document.getElementById("url").value;
-  const genre = document.getElementById("genre").value;
-  const memo = document.getElementById("memo").value;
+/* 追加 */
+async function addEntry() {
+  if (!uid) return;
+
+  const url = url.value;
   if (!url) return;
 
-  const now = new Date();
-
-  db.collection("users")
-    .doc(currentUser.uid)
+  await db.collection("users")
+    .doc(uid)
     .collection("urls")
     .add({
       url,
-      genre,
-      memo,
-      createdAt: firebase.firestore.Timestamp.fromDate(now)
-    })
-    .then(() => {
-      document.getElementById("url").value = "";
-      document.getElementById("genre").value = "";
-      document.getElementById("memo").value = "";
-      loadAll();
+      genre: genre.value,
+      memo: memo.value,
+      created: firebase.firestore.Timestamp.now()
     });
+
+  url.value = genre.value = memo.value = "";
+  loadData();
 }
 
-/* ---------- 表示 ---------- */
-function render(docs) {
-  const list = document.getElementById("list");
-  list.innerHTML = "";
+/* 読み込み */
+async function loadData() {
+  if (!uid) return;
 
-  docs.forEach(doc => {
-    const d = doc.data();
-    const date = d.createdAt.toDate();
+  const snap = await db.collection("users")
+    .doc(uid)
+    .collection("urls")
+    .orderBy("created", "desc")
+    .get();
 
-    list.innerHTML += `
+  allData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  render(allData);
+}
+
+/* 描画 */
+function render(list) {
+  const div = document.getElementById("list");
+  div.innerHTML = "";
+
+  list.forEach(e => {
+    const date = e.created.toDate();
+    div.innerHTML += `
       <div class="entry">
-        <a href="${d.url}" target="_blank">${d.url}</a>
-        <div>ジャンル：${d.genre}</div>
-        <div>メモ：${d.memo}</div>
+        <a href="${e.url}" target="_blank">${e.url}</a>
+        <div>ジャンル：${e.genre}</div>
+        <div>メモ：${e.memo}</div>
         <div class="small">
           ${date.toLocaleDateString()} ${date.toLocaleTimeString()}
         </div>
-        <button onclick="removeEntry('${doc.id}')">削除</button>
+        <button onclick="removeEntry('${e.id}')">削除</button>
       </div>
     `;
   });
 }
 
-/* ---------- 全件 ---------- */
-function loadAll() {
-  if (!currentUser) return;
-
-  db.collection("users")
-    .doc(currentUser.uid)
-    .collection("urls")
-    .orderBy("createdAt", "desc")
-    .get()
-    .then(snap => render(snap.docs));
-}
-
-/* ---------- 検索 ---------- */
-function search() {
-  if (!currentUser) return;
-
-  const g = document.getElementById("searchGenre").value;
-  const d = document.getElementById("searchDate").value;
-
-  let ref = db.collection("users")
-    .doc(currentUser.uid)
-    .collection("urls");
-
-  ref.get().then(snap => {
-    const filtered = snap.docs.filter(doc => {
-      const data = doc.data();
-      const date = data.createdAt.toDate().toISOString().slice(0,10);
-
-      return (!g || data.genre.includes(g)) &&
-             (!d || date === d);
-    });
-    render(filtered);
-  });
-}
-
-/* ---------- 削除 ---------- */
-function removeEntry(id) {
-  db.collection("users")
-    .doc(currentUser.uid)
+/* 削除 */
+async function removeEntry(id) {
+  await db.collection("users")
+    .doc(uid)
     .collection("urls")
     .doc(id)
-    .delete()
-    .then(loadAll);
+    .delete();
+
+  loadData();
+}
+
+/* 検索 */
+function search() {
+  const g = searchGenre.value;
+  const d = searchDate.value;
+
+  const filtered = allData.filter(e => {
+    const date = e.created.toDate().toISOString().slice(0,10);
+    return (!g || e.genre.includes(g)) &&
+           (!d || date === d);
+  });
+
+  render(filtered);
 }
 </script>
 
 </body>
 </html>
-
