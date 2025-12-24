@@ -6,24 +6,22 @@
 
 <style>
 body {
+  margin: 0;
   font-family: sans-serif;
   background: #bfe9ff;
-  margin: 0;
-  padding: 20px;
 }
 
 .container {
-  background: #fff;
-  max-width: 700px;
-  margin: auto;
+  background: white;
+  margin: 20px;
   padding: 20px;
   border-radius: 10px;
 }
 
 input, textarea, button {
   width: 100%;
-  padding: 8px;
   margin: 5px 0;
+  padding: 8px;
 }
 
 .entry {
@@ -40,10 +38,9 @@ input, textarea, button {
 </head>
 
 <body>
-
 <div class="container">
-<h1>URL管理＆整理くん</h1>
 
+<h1>URL管理＆整理くん</h1>
 <p id="counter">読み込み中...</p>
 
 <button onclick="login()">Googleでログイン</button>
@@ -53,9 +50,9 @@ input, textarea, button {
 <hr>
 
 <h3>追加</h3>
-<input id="url" placeholder="URL">
-<input id="genre" placeholder="ジャンル">
-<textarea id="memo" placeholder="メモ"></textarea>
+<input id="urlInput" placeholder="URL">
+<input id="genreInput" placeholder="ジャンル">
+<textarea id="memoInput" placeholder="メモ"></textarea>
 <button onclick="addEntry()">追加</button>
 
 <hr>
@@ -69,6 +66,7 @@ input, textarea, button {
 <hr>
 
 <div id="list"></div>
+
 </div>
 
 <!-- Firebase -->
@@ -80,116 +78,126 @@ input, textarea, button {
 const firebaseConfig = {
   apiKey: "AIzaSyCRbxQK7LFzoEAeTYhFVrPEGCJx9QU7hAQ",
   authDomain: "url-kanri-kun.firebaseapp.com",
-  projectId: "url-kanri-kun",
-  storageBucket: "url-kanri-kun.appspot.com",
-  messagingSenderId: "142130647668",
-  appId: "1:142130647668:web:a24da9ae06dfa84ad37721"
+  projectId: "url-kanri-kun"
 };
 
 firebase.initializeApp(firebaseConfig);
+
 const auth = firebase.auth();
 const db = firebase.firestore();
+</script>
 
+<script>
 let currentUser = null;
-let allData = [];
 
-/* ---------- ページ訪問カウンター ---------- */
-const counterRef = db.collection("meta").doc("counter");
-counterRef.get().then(doc => {
-  if (!doc.exists) counterRef.set({ count: 0 });
-  counterRef.update({ count: firebase.firestore.FieldValue.increment(1) });
-});
-counterRef.onSnapshot(doc => {
+/* 🔢 ページ開いたら1カウント */
+db.collection("counter").doc("access").set({
+  count: firebase.firestore.FieldValue.increment(1)
+}, { merge: true });
+
+db.collection("counter").doc("access").get().then(d => {
   document.getElementById("counter").innerText =
-    `あなたは ${doc.data().count} 人目のユーザーです`;
+    `あなたは ${d.data().count} 人目のユーザーです`;
 });
 
-/* ---------- 認証 ---------- */
 function login() {
   auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
 }
+
 function logout() {
   auth.signOut();
 }
 
 auth.onAuthStateChanged(user => {
   currentUser = user;
-  if (user) {
-    document.getElementById("user").innerText =
-      "ログイン中：" + user.displayName;
-    loadData();
-  } else {
-    document.getElementById("user").innerText = "";
-    document.getElementById("list").innerHTML = "";
-  }
+  document.getElementById("user").innerText =
+    user ? `ログイン中：${user.displayName}` : "";
+  if (user) loadEntries();
 });
 
-/* ---------- データ処理 ---------- */
+/* ➕ 追加（ここが今回の本命修正） */
 function addEntry() {
   if (!currentUser) return alert("ログインしてください");
 
-  const url = url.value;
-  const genre = genre.value;
-  const memo = memo.value;
-  if (!url) return;
+  const urlValue = document.getElementById("urlInput").value;
+  const genreValue = document.getElementById("genreInput").value;
+  const memoValue = document.getElementById("memoInput").value;
 
-  const now = new Date();
-  db.collection("users").doc(currentUser.uid)
-    .collection("urls").add({
-      url, genre, memo,
-      date: now.toISOString().slice(0,10),
-      time: now.toLocaleTimeString(),
-      created: firebase.firestore.FieldValue.serverTimestamp()
-    });
+  if (!urlValue) return;
 
-  document.getElementById("url").value = "";
-  document.getElementById("genre").value = "";
-  document.getElementById("memo").value = "";
-}
-
-function loadData() {
-  db.collection("users").doc(currentUser.uid)
+  db.collection("users")
+    .doc(currentUser.uid)
     .collection("urls")
-    .orderBy("created", "desc")
-    .onSnapshot(snapshot => {
-      allData = [];
-      snapshot.forEach(doc => {
-        allData.push({ id: doc.id, ...doc.data() });
+    .add({
+      url: urlValue,
+      genre: genreValue,
+      memo: memoValue,
+      date: new Date().toISOString().slice(0,10),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+  document.getElementById("urlInput").value = "";
+  document.getElementById("genreInput").value = "";
+  document.getElementById("memoInput").value = "";
+}
+
+/* 📄 読み込み */
+function loadEntries() {
+  db.collection("users")
+    .doc(currentUser.uid)
+    .collection("urls")
+    .orderBy("createdAt", "desc")
+    .onSnapshot(snap => {
+      const list = document.getElementById("list");
+      list.innerHTML = "";
+      snap.forEach(doc => {
+        const e = doc.data();
+        list.innerHTML += `
+          <div class="entry">
+            <a href="${e.url}" target="_blank">${e.url}</a>
+            <div>ジャンル：${e.genre}</div>
+            <div>メモ：${e.memo}</div>
+            <div class="small">${e.date}</div>
+          </div>
+        `;
       });
-      render(allData);
     });
 }
 
-function render(list) {
-  const div = document.getElementById("list");
-  div.innerHTML = "";
-  list.forEach(e => {
-    div.innerHTML += `
-      <div class="entry">
-        <a href="${e.url}" target="_blank">${e.url}</a>
-        <div>ジャンル：${e.genre}</div>
-        <div>メモ：${e.memo}</div>
-        <div class="small">${e.date} ${e.time}</div>
-      </div>`;
-  });
-}
-
+/* 🔍 検索 */
 function search() {
-  const g = searchGenre.value;
-  const d = searchDate.value;
-  render(allData.filter(e =>
-    (!g || e.genre.includes(g)) &&
-    (!d || e.date === d)
-  ));
+  const g = document.getElementById("searchGenre").value;
+  const d = document.getElementById("searchDate").value;
+
+  db.collection("users")
+    .doc(currentUser.uid)
+    .collection("urls")
+    .get()
+    .then(snap => {
+      const list = document.getElementById("list");
+      list.innerHTML = "";
+      snap.forEach(doc => {
+        const e = doc.data();
+        if (
+          (!g || e.genre.includes(g)) &&
+          (!d || e.date === d)
+        ) {
+          list.innerHTML += `
+            <div class="entry">
+              <a href="${e.url}" target="_blank">${e.url}</a>
+              <div>ジャンル：${e.genre}</div>
+              <div>メモ：${e.memo}</div>
+              <div class="small">${e.date}</div>
+            </div>
+          `;
+        }
+      });
+    });
 }
 
 function clearSearch() {
-  searchGenre.value = "";
-  searchDate.value = "";
-  render(allData);
+  loadEntries();
 }
 </script>
-
 </body>
 </html>
-
