@@ -7,7 +7,7 @@
 <style>
 body {
   font-family: sans-serif;
-  background: #bfe7ff;
+  background: #bfe9ff;
   margin: 0;
   padding: 20px;
 }
@@ -22,8 +22,8 @@ body {
 
 input, textarea, button {
   width: 100%;
-  margin: 5px 0;
   padding: 8px;
+  margin: 5px 0;
 }
 
 .entry {
@@ -34,7 +34,7 @@ input, textarea, button {
 
 .small {
   font-size: 12px;
-  color: #666;
+  color: #555;
 }
 </style>
 </head>
@@ -44,8 +44,10 @@ input, textarea, button {
 <div class="container">
 <h1>URL管理＆整理くん</h1>
 
-<p id="counter"></p>
+<p id="counter">読み込み中...</p>
+
 <button onclick="login()">Googleでログイン</button>
+<button onclick="logout()">ログアウト</button>
 <p id="user"></p>
 
 <hr>
@@ -65,6 +67,7 @@ input, textarea, button {
 <button onclick="clearSearch()">クリア</button>
 
 <hr>
+
 <div id="list"></div>
 </div>
 
@@ -90,70 +93,78 @@ const db = firebase.firestore();
 let currentUser = null;
 let allData = [];
 
-/* ページ表示ごとにカウント */
+/* ---------- ページ訪問カウンター ---------- */
 const counterRef = db.collection("meta").doc("counter");
-counterRef.set({count:0},{merge:true}).then(()=>{
-  counterRef.update({count: firebase.firestore.FieldValue.increment(1)});
+counterRef.get().then(doc => {
+  if (!doc.exists) counterRef.set({ count: 0 });
+  counterRef.update({ count: firebase.firestore.FieldValue.increment(1) });
 });
-counterRef.onSnapshot(doc=>{
+counterRef.onSnapshot(doc => {
   document.getElementById("counter").innerText =
-    "あなたは " + doc.data().count + " 人目のユーザーです";
+    `あなたは ${doc.data().count} 人目のユーザーです`;
 });
 
-/* ログイン */
+/* ---------- 認証 ---------- */
 function login() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider);
+  auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+}
+function logout() {
+  auth.signOut();
 }
 
 auth.onAuthStateChanged(user => {
-  if (!user) return;
   currentUser = user;
-  document.getElementById("user").innerText =
-    "ログイン中：" + user.displayName;
-  loadData();
+  if (user) {
+    document.getElementById("user").innerText =
+      "ログイン中：" + user.displayName;
+    loadData();
+  } else {
+    document.getElementById("user").innerText = "";
+    document.getElementById("list").innerHTML = "";
+  }
 });
 
-/* 追加 */
+/* ---------- データ処理 ---------- */
 function addEntry() {
-  if (!currentUser) return alert("ログインして");
+  if (!currentUser) return alert("ログインしてください");
+
   const url = url.value;
+  const genre = genre.value;
+  const memo = memo.value;
   if (!url) return;
 
   const now = new Date();
   db.collection("users").doc(currentUser.uid)
     .collection("urls").add({
-      url,
-      genre: genre.value,
-      memo: memo.value,
+      url, genre, memo,
       date: now.toISOString().slice(0,10),
       time: now.toLocaleTimeString(),
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      created: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-  document.getElementById("url").value="";
-  document.getElementById("genre").value="";
-  document.getElementById("memo").value="";
+  document.getElementById("url").value = "";
+  document.getElementById("genre").value = "";
+  document.getElementById("memo").value = "";
 }
 
-/* 読み込み */
 function loadData() {
   db.collection("users").doc(currentUser.uid)
     .collection("urls")
-    .orderBy("createdAt","desc")
-    .onSnapshot(snap=>{
+    .orderBy("created", "desc")
+    .onSnapshot(snapshot => {
       allData = [];
-      snap.forEach(d=>allData.push(d.data()));
+      snapshot.forEach(doc => {
+        allData.push({ id: doc.id, ...doc.data() });
+      });
       render(allData);
     });
 }
 
-/* 表示 */
 function render(list) {
   const div = document.getElementById("list");
-  div.innerHTML="";
-  list.forEach(e=>{
-    div.innerHTML+=`
+  div.innerHTML = "";
+  list.forEach(e => {
+    div.innerHTML += `
       <div class="entry">
         <a href="${e.url}" target="_blank">${e.url}</a>
         <div>ジャンル：${e.genre}</div>
@@ -163,7 +174,6 @@ function render(list) {
   });
 }
 
-/* 検索 */
 function search() {
   const g = searchGenre.value;
   const d = searchDate.value;
@@ -174,11 +184,12 @@ function search() {
 }
 
 function clearSearch() {
-  searchGenre.value="";
-  searchDate.value="";
+  searchGenre.value = "";
+  searchDate.value = "";
   render(allData);
 }
 </script>
 
 </body>
 </html>
+
