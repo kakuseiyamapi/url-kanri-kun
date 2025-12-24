@@ -7,26 +7,23 @@
 <style>
 body {
   font-family: sans-serif;
-  background: #cfefff;
+  background: #bfe7ff;
   margin: 0;
+  padding: 20px;
 }
 
 .container {
   background: #fff;
-  max-width: 900px;
-  margin: 20px auto;
+  max-width: 700px;
+  margin: auto;
   padding: 20px;
   border-radius: 10px;
 }
 
 input, textarea, button {
   width: 100%;
-  padding: 8px;
   margin: 5px 0;
-}
-
-button {
-  cursor: pointer;
+  padding: 8px;
 }
 
 .entry {
@@ -34,21 +31,21 @@ button {
   padding: 10px;
   margin-top: 10px;
 }
+
 .small {
   font-size: 12px;
-  color: #555;
+  color: #666;
 }
 </style>
 </head>
 
 <body>
+
 <div class="container">
-
 <h1>URL管理＆整理くん</h1>
-<p id="counter"></p>
 
+<p id="counter"></p>
 <button onclick="login()">Googleでログイン</button>
-<button onclick="logout()">ログアウト</button>
 <p id="user"></p>
 
 <hr>
@@ -65,12 +62,10 @@ button {
 <input id="searchGenre" placeholder="ジャンル検索">
 <input id="searchDate" type="date">
 <button onclick="search()">検索</button>
-<button onclick="loadData()">クリア</button>
+<button onclick="clearSearch()">クリア</button>
 
 <hr>
-
 <div id="list"></div>
-
 </div>
 
 <!-- Firebase -->
@@ -82,125 +77,108 @@ button {
 const firebaseConfig = {
   apiKey: "AIzaSyCRbxQK7LFzoEAeTYhFVrPEGCJx9QU7hAQ",
   authDomain: "url-kanri-kun.firebaseapp.com",
-  projectId: "url-kanri-kun"
+  projectId: "url-kanri-kun",
+  storageBucket: "url-kanri-kun.appspot.com",
+  messagingSenderId: "142130647668",
+  appId: "1:142130647668:web:a24da9ae06dfa84ad37721"
 };
 
 firebase.initializeApp(firebaseConfig);
-
 const auth = firebase.auth();
 const db = firebase.firestore();
+
 let currentUser = null;
+let allData = [];
 
-/* ---------- 認証 ---------- */
+/* ページ表示ごとにカウント */
+const counterRef = db.collection("meta").doc("counter");
+counterRef.set({count:0},{merge:true}).then(()=>{
+  counterRef.update({count: firebase.firestore.FieldValue.increment(1)});
+});
+counterRef.onSnapshot(doc=>{
+  document.getElementById("counter").innerText =
+    "あなたは " + doc.data().count + " 人目のユーザーです";
+});
+
+/* ログイン */
 function login() {
-  auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
-}
-function logout() {
-  auth.signOut();
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider);
 }
 
-auth.onAuthStateChanged(async user => {
-  if (!user) {
-    document.getElementById("user").innerText = "未ログイン";
-    return;
-  }
-
+auth.onAuthStateChanged(user => {
+  if (!user) return;
   currentUser = user;
   document.getElementById("user").innerText =
     "ログイン中：" + user.displayName;
-
-  await countUser();
   loadData();
 });
 
-/* ---------- ユーザーカウント ---------- */
-async function countUser() {
-  const ref = db.collection("counter").doc("global");
-  await db.runTransaction(async t => {
-    const doc = await t.get(ref);
-    const now = doc.exists ? doc.data().count + 1 : 1;
-    t.set(ref, { count: now });
-    document.getElementById("counter").innerText =
-      `あなたは ${now} 人目のユーザーです`;
-  });
-}
-
-/* ---------- 追加 ---------- */
-async function addEntry() {
+/* 追加 */
+function addEntry() {
   if (!currentUser) return alert("ログインして");
-
   const url = url.value;
   if (!url) return;
 
-  await db
-    .collection("users")
-    .doc(currentUser.uid)
-    .collection("urls")
-    .add({
+  const now = new Date();
+  db.collection("users").doc(currentUser.uid)
+    .collection("urls").add({
       url,
       genre: genre.value,
       memo: memo.value,
-      createdAt: firebase.firestore.Timestamp.now()
+      date: now.toISOString().slice(0,10),
+      time: now.toLocaleTimeString(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-  url.value = genre.value = memo.value = "";
-  loadData();
+  document.getElementById("url").value="";
+  document.getElementById("genre").value="";
+  document.getElementById("memo").value="";
 }
 
-/* ---------- 読み込み ---------- */
-async function loadData() {
-  if (!currentUser) return;
-
-  const snap = await db
-    .collection("users")
-    .doc(currentUser.uid)
+/* 読み込み */
+function loadData() {
+  db.collection("users").doc(currentUser.uid)
     .collection("urls")
-    .orderBy("createdAt", "desc")
-    .get();
-
-  render(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-}
-
-/* ---------- 検索 ---------- */
-async function search() {
-  let ref = db
-    .collection("users")
-    .doc(currentUser.uid)
-    .collection("urls");
-
-  if (searchGenre.value)
-    ref = ref.where("genre", "==", searchGenre.value);
-
-  const snap = await ref.get();
-  const filtered = snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .filter(d => {
-      if (!searchDate.value) return true;
-      const d0 = d.createdAt.toDate().toISOString().slice(0,10);
-      return d0 === searchDate.value;
+    .orderBy("createdAt","desc")
+    .onSnapshot(snap=>{
+      allData = [];
+      snap.forEach(d=>allData.push(d.data()));
+      render(allData);
     });
-
-  render(filtered);
 }
 
-/* ---------- 表示 ---------- */
+/* 表示 */
 function render(list) {
-  list.innerHTML = "";
   const div = document.getElementById("list");
-  div.innerHTML = "";
-  list.forEach(e => {
-    const d = e.createdAt.toDate();
-    div.innerHTML += `
+  div.innerHTML="";
+  list.forEach(e=>{
+    div.innerHTML+=`
       <div class="entry">
         <a href="${e.url}" target="_blank">${e.url}</a>
         <div>ジャンル：${e.genre}</div>
-        <div>${e.memo}</div>
-        <div class="small">${d.toLocaleString()}</div>
-      </div>
-    `;
+        <div>メモ：${e.memo}</div>
+        <div class="small">${e.date} ${e.time}</div>
+      </div>`;
   });
 }
+
+/* 検索 */
+function search() {
+  const g = searchGenre.value;
+  const d = searchDate.value;
+  render(allData.filter(e =>
+    (!g || e.genre.includes(g)) &&
+    (!d || e.date === d)
+  ));
+}
+
+function clearSearch() {
+  searchGenre.value="";
+  searchDate.value="";
+  render(allData);
+}
 </script>
+
 </body>
 </html>
-
