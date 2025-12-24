@@ -4,33 +4,31 @@
 <meta charset="UTF-8">
 <title>URL管理＆整理くん</title>
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-
 <style>
 body {
   font-family: sans-serif;
   background: #cfefff;
   margin: 0;
-  padding: 20px;
 }
+
 .container {
   background: #fff;
   max-width: 900px;
-  margin: auto;
+  margin: 20px auto;
   padding: 20px;
   border-radius: 10px;
 }
+
 input, textarea, button {
   width: 100%;
   padding: 8px;
-  margin: 6px 0;
+  margin: 5px 0;
 }
+
 button {
   cursor: pointer;
 }
+
 .entry {
   border: 1px solid #ccc;
   padding: 10px;
@@ -40,27 +38,18 @@ button {
   font-size: 12px;
   color: #555;
 }
-.top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
 </style>
 </head>
 
 <body>
 <div class="container">
 
-<div class="top">
-  <h2>URL管理＆整理くん</h2>
-  <div>
-    <button onclick="login()">Googleログイン</button>
-    <button onclick="logout()">ログアウト</button>
-  </div>
-</div>
-
-<p id="userInfo"></p>
+<h1>URL管理＆整理くん</h1>
 <p id="counter"></p>
+
+<button onclick="login()">Googleでログイン</button>
+<button onclick="logout()">ログアウト</button>
+<p id="user"></p>
 
 <hr>
 
@@ -73,10 +62,10 @@ button {
 <hr>
 
 <h3>検索</h3>
-<input id="searchGenre" placeholder="ジャンルで検索">
+<input id="searchGenre" placeholder="ジャンル検索">
 <input id="searchDate" type="date">
 <button onclick="search()">検索</button>
-<button onclick="clearSearch()">クリア</button>
+<button onclick="loadData()">クリア</button>
 
 <hr>
 
@@ -84,129 +73,132 @@ button {
 
 </div>
 
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
 <script>
-/* Firebase設定 */
 const firebaseConfig = {
   apiKey: "AIzaSyCRbxQK7LFzoEAeTYhFVrPEGCJx9QU7hAQ",
   authDomain: "url-kanri-kun.firebaseapp.com",
   projectId: "url-kanri-kun"
 };
+
 firebase.initializeApp(firebaseConfig);
 
 const auth = firebase.auth();
 const db = firebase.firestore();
-
 let currentUser = null;
-let allData = [];
 
-/* ログイン */
+/* ---------- 認証 ---------- */
 function login() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider);
+  auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
 }
-
-/* ログアウト */
 function logout() {
   auth.signOut();
 }
 
-/* 認証状態 */
 auth.onAuthStateChanged(async user => {
   if (!user) {
-    document.getElementById("userInfo").innerText = "ログインしてください";
+    document.getElementById("user").innerText = "未ログイン";
     return;
   }
 
   currentUser = user;
-  document.getElementById("userInfo").innerText =
+  document.getElementById("user").innerText =
     "ログイン中：" + user.displayName;
 
   await countUser();
   loadData();
 });
 
-/* ユーザーカウンター */
+/* ---------- ユーザーカウント ---------- */
 async function countUser() {
-  const ref = db.collection("counter").doc("total");
+  const ref = db.collection("counter").doc("global");
   await db.runTransaction(async t => {
     const doc = await t.get(ref);
-    const count = doc.exists ? doc.data().count + 1 : 1;
-    t.set(ref, { count });
+    const now = doc.exists ? doc.data().count + 1 : 1;
+    t.set(ref, { count: now });
     document.getElementById("counter").innerText =
-      `あなたは ${count} 人目のユーザーです`;
+      `あなたは ${now} 人目のユーザーです`;
   });
 }
 
-/* 追加（←ここ直ってる） */
+/* ---------- 追加 ---------- */
 async function addEntry() {
   if (!currentUser) return alert("ログインして");
 
   const url = url.value;
   if (!url) return;
 
-  const now = new Date();
-  const data = {
-    url,
-    genre: genre.value,
-    memo: memo.value,
-    date: now.toISOString().slice(0,10),
-    time: now.toLocaleTimeString()
-  };
-
   await db
     .collection("users")
     .doc(currentUser.uid)
     .collection("urls")
-    .add(data);
+    .add({
+      url,
+      genre: genre.value,
+      memo: memo.value,
+      createdAt: firebase.firestore.Timestamp.now()
+    });
 
   url.value = genre.value = memo.value = "";
   loadData();
 }
 
-/* 読み込み */
+/* ---------- 読み込み ---------- */
 async function loadData() {
+  if (!currentUser) return;
+
   const snap = await db
     .collection("users")
     .doc(currentUser.uid)
     .collection("urls")
-    .orderBy("date", "desc")
+    .orderBy("createdAt", "desc")
     .get();
 
-  allData = snap.docs.map(d => d.data());
-  render(allData);
+  render(snap.docs.map(d => ({ id: d.id, ...d.data() })));
 }
 
-/* 表示 */
+/* ---------- 検索 ---------- */
+async function search() {
+  let ref = db
+    .collection("users")
+    .doc(currentUser.uid)
+    .collection("urls");
+
+  if (searchGenre.value)
+    ref = ref.where("genre", "==", searchGenre.value);
+
+  const snap = await ref.get();
+  const filtered = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(d => {
+      if (!searchDate.value) return true;
+      const d0 = d.createdAt.toDate().toISOString().slice(0,10);
+      return d0 === searchDate.value;
+    });
+
+  render(filtered);
+}
+
+/* ---------- 表示 ---------- */
 function render(list) {
+  list.innerHTML = "";
   const div = document.getElementById("list");
   div.innerHTML = "";
   list.forEach(e => {
+    const d = e.createdAt.toDate();
     div.innerHTML += `
       <div class="entry">
         <a href="${e.url}" target="_blank">${e.url}</a>
         <div>ジャンル：${e.genre}</div>
-        <div>メモ：${e.memo}</div>
-        <div class="small">${e.date} ${e.time}</div>
+        <div>${e.memo}</div>
+        <div class="small">${d.toLocaleString()}</div>
       </div>
     `;
   });
-}
-
-/* 検索 */
-function search() {
-  const g = searchGenre.value;
-  const d = searchDate.value;
-
-  render(allData.filter(e =>
-    (!g || e.genre.includes(g)) &&
-    (!d || e.date === d)
-  ));
-}
-
-function clearSearch() {
-  searchGenre.value = "";
-  searchDate.value = "";
-  render(allData);
 }
 </script>
 </body>
