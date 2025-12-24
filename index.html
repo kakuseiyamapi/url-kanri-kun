@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>URL管理＆整理くん</title>
+
 <style>
 body {
   font-family: sans-serif;
@@ -41,6 +42,11 @@ button {
 
 <h1>URL管理＆整理くん</h1>
 
+<button onclick="login()">Googleでログイン</button>
+<p id="user"></p>
+
+<hr>
+
 <h3>追加</h3>
 <input id="url" placeholder="URL">
 <input id="genre" placeholder="ジャンル（自由入力）">
@@ -59,7 +65,47 @@ button {
 
 <div id="list"></div>
 
+<!-- Firebase SDK（compat版で統一） -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
 <script>
+// =======================
+// Firebase 設定
+// =======================
+const firebaseConfig = {
+  apiKey: "AIzaSyCRbxQK7LFzoEAeTYhFVrPEGCJx9QU7hAQ",
+  authDomain: "url-kanri-kun.firebaseapp.com",
+  projectId: "url-kanri-kun",
+  storageBucket: "url-kanri-kun.appspot.com",
+  messagingSenderId: "142130647668",
+  appId: "1:142130647668:web:a24da9ae06dfa84ad37721"
+};
+
+// Firebase 初期化（1回だけ）
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+
+// =======================
+// Googleログイン
+// =======================
+function login() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider);
+}
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    document.getElementById("user").innerText =
+      "ログイン中：" + user.displayName;
+  } else {
+    document.getElementById("user").innerText = "未ログイン";
+  }
+});
+
+// =======================
+// URL管理ロジック（ローカル）
+// =======================
 let data = [];
 
 function addEntry() {
@@ -122,47 +168,6 @@ function clearSearch() {
   document.getElementById("searchDate").value = "";
   render(data);
 }
-</script>
-<button onclick="login()">Googleでログイン</button>
-<p id="user"></p>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-
-<script>
-const firebaseConfig = {
-  // ここにFirebaseの設定を貼る
-};
-
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-
-function login() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider);
-}
-
-auth.onAuthStateChanged(user => {
-  if (user) {
-    document.getElementById("user").innerText =
-      "ログイン中：" + user.displayName;
-  }
-});
-</script>
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyCRbxQK7LFzoEAeTYhFVrPEGCJx9QU7hAQ",
-    authDomain: "url-kanri-kun.firebaseapp.com",
-    projectId: "url-kanri-kun",
-    storageBucket: "url-kanri-kun.appspot.com",
-    messagingSenderId: "142130647668",
-    appId: "1:142130647668:web:a24da9ae06dfa84ad37721"
-  };
-
-  // Firebase 初期化（超重要）
-  firebase.initializeApp(firebaseConfig);
-
-  // 認証を使う宣言
-  const auth = firebase.auth();
 </script>
 
 </body>
