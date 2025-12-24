@@ -148,6 +148,22 @@ auth.onAuthStateChanged(user => {
   }
 });
 </script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCRbxQK7LFzoEAeTYhFVrPEGCJx9QU7hAQ",
+    authDomain: "url-kanri-kun.firebaseapp.com",
+    projectId: "url-kanri-kun",
+    storageBucket: "url-kanri-kun.appspot.com",
+    messagingSenderId: "142130647668",
+    appId: "1:142130647668:web:a24da9ae06dfa84ad37721"
+  };
+
+  // Firebase 初期化（超重要）
+  firebase.initializeApp(firebaseConfig);
+
+  // 認証を使う宣言
+  const auth = firebase.auth();
+</script>
 
 </body>
 </html>
