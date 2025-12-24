@@ -2,34 +2,23 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>URL管理＆整理くん</title>
+<title>URL管理くん（実用版）</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
 <style>
-body {
-  font-family: sans-serif;
-  background: #fff;
-  margin: 20px;
-}
-input, textarea, button {
-  width: 100%;
-  margin: 4px 0;
-  padding: 6px;
-}
-.entry {
-  border: 1px solid #ccc;
-  padding: 10px;
-  margin-top: 10px;
-}
-.small {
-  font-size: 12px;
-  color: #555;
-}
+body { font-family: sans-serif; margin: 20px; }
+input, textarea, button { width: 100%; margin: 4px 0; padding: 6px; }
+.entry { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
+.small { font-size: 12px; color: #666; }
 </style>
 </head>
 
 <body>
 
-<h1>URL管理＆整理くん</h1>
+<h2>URL管理くん（Firestore実用版）</h2>
 
 <button onclick="login()">Googleでログイン</button>
 <button onclick="logout()">ログアウト</button>
@@ -37,104 +26,84 @@ input, textarea, button {
 
 <hr>
 
-<h3>追加</h3>
 <input id="url" placeholder="URL">
 <input id="genre" placeholder="ジャンル">
 <textarea id="memo" placeholder="メモ"></textarea>
 <button onclick="addEntry()">追加</button>
 
 <hr>
-
 <div id="list"></div>
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-
 <script>
-/* ===== Firebase設定 ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyCRbxQK7LFzoEAeTYhFVrPEGCJx9QU7hAQ",
   authDomain: "url-kanri-kun.firebaseapp.com",
   projectId: "url-kanri-kun",
-  storageBucket: "url-kanri-kun.appspot.com",
-  messagingSenderId: "142130647668",
-  appId: "1:142130647668:web:a24da9ae06dfa84ad37721"
 };
 
 firebase.initializeApp(firebaseConfig);
 
 const auth = firebase.auth();
 const db = firebase.firestore();
-
 let currentUser = null;
 
-/* ===== ログイン ===== */
+// ログイン
 function login() {
   const provider = new firebase.auth.GoogleAuthProvider();
   auth.signInWithPopup(provider);
 }
 
-/* ===== ログアウト ===== */
+// ログアウト
 function logout() {
   auth.signOut();
+  document.getElementById("list").innerHTML = "";
+  document.getElementById("user").innerText = "";
 }
 
-/* ===== 認証状態監視 ===== */
+// 認証監視
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
     document.getElementById("user").innerText =
       "ログイン中：" + user.displayName;
-    loadEntries();
+    loadData();
   } else {
     currentUser = null;
-    document.getElementById("user").innerText = "未ログイン";
-    document.getElementById("list").innerHTML = "";
   }
 });
 
-/* ===== 追加 ===== */
+// 追加
 function addEntry() {
-  if (!currentUser) return alert("ログインしてください");
-
-  const url = document.getElementById("url").value;
-  const genre = document.getElementById("genre").value;
-  const memo = document.getElementById("memo").value;
-  if (!url) return;
+  if (!currentUser) return alert("ログインして");
 
   db.collection("users")
     .doc(currentUser.uid)
     .collection("urls")
     .add({
-      url,
-      genre,
-      memo,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      url: url.value,
+      genre: genre.value,
+      memo: memo.value,
+      created: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-  document.getElementById("url").value = "";
-  document.getElementById("genre").value = "";
-  document.getElementById("memo").value = "";
+  url.value = genre.value = memo.value = "";
 }
 
-/* ===== 読み込み ===== */
-function loadEntries() {
+// 読み込み
+function loadData() {
   db.collection("users")
     .doc(currentUser.uid)
     .collection("urls")
-    .orderBy("createdAt", "desc")
+    .orderBy("created", "desc")
     .onSnapshot(snapshot => {
-      const list = document.getElementById("list");
       list.innerHTML = "";
       snapshot.forEach(doc => {
         const e = doc.data();
         list.innerHTML += `
           <div class="entry">
             <a href="${e.url}" target="_blank">${e.url}</a>
-            <div>ジャンル：${e.genre || ""}</div>
-            <div>メモ：${e.memo || ""}</div>
+            <div>ジャンル：${e.genre}</div>
+            <div>メモ：${e.memo}</div>
             <button onclick="removeEntry('${doc.id}')">削除</button>
           </div>
         `;
@@ -142,7 +111,7 @@ function loadEntries() {
     });
 }
 
-/* ===== 削除 ===== */
+// 削除
 function removeEntry(id) {
   db.collection("users")
     .doc(currentUser.uid)
@@ -154,4 +123,3 @@ function removeEntry(id) {
 
 </body>
 </html>
-
